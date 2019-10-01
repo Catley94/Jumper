@@ -64,11 +64,22 @@ function create ()
     //this.add.image(400, 300, 'sky');
     //Adds Star 
     //this.add.image(400, 300, 'star');
-
+    var randomX = Phaser.Math.Between(20, 760)
+    //var randomY = Phaser.Math.Between(400, -2000)
     //Adds a 'static' group in Physics called Platforms
     platforms = this.physics.add.staticGroup();
     spikes = this.physics.add.staticGroup();
-    powerups = this.physics.add.group();
+    powerups = this.physics.add.group({
+        key: 'powerups',
+        repeat: 10,
+        setXY: { x: 10, y: -2000, stepX: 80 }
+    });
+    powerups.children.iterate(function (child) {
+
+        //  Give each star a slightly different bounce
+        child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
+
+    });
     //Creates the ground and scales it x2
     platforms.create(0, 568, 'ground').setScale(6).refreshBody();
 
