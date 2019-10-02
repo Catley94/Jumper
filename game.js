@@ -38,9 +38,9 @@ var platforms;
 var player;
 var gameOver = false;
 var timer;
-var score = 0
-var scoreText
-var gameScoreTimer
+var time = 0
+var timeText
+var gametimeTimer
 var timedEvent
 var bombTimer
 var inputTimer
@@ -48,7 +48,7 @@ var inputTimer
 function create ()
 {   
     //  The score, fixed to camera
-    scoreText = this.add.text(16, 16, 'score: ' + score, { fontSize: '32px', fill: '#000' }).setScrollFactor(0);
+    timeText = this.add.text(16, 16, 'Time: ' + time, { fontSize: '32px', fill: '#000' }).setScrollFactor(0);
     timedEvent = this.time.addEvent({ delay: 1000, callback: onEvent, callbackScope: this, loop: true});
     
 
@@ -123,7 +123,7 @@ function create ()
     //player = this.physics.add.sprite(100, 450, 'dude');
     //player = this.physics.add.sprite(100, 450, 'dude');
     player = this.physics.add.sprite(180.6, -1105.6, 'player1');
-    console.log(this.physics)
+    
     //Sets the bounce for the player 
     player.setBounce(0.4);
 
@@ -207,7 +207,10 @@ function createBomb() {
 function collectPowerUp(player, powerup) {
     powerup.disableBody(true, true);
     player.setBounce(1)
-
+    bouncePowerup = this.time.addEvent({ delay: 10000, callback: bouncePowerupTimer, callbackScope: this, loop: true});
+    function bouncePowerupTimer() {
+        player.setBounce(0.5)
+    }
 }
  
 function setGameOver() {
@@ -215,13 +218,13 @@ function setGameOver() {
 }
 
 function onEvent() {
-    score += 1;
+    time += 1;
 }
 
-function update ()
+function update()
 {   
     
-    scoreText.setText('Score: ' + score)
+    timeText.setText('Time: ' + time)
     if (gameOver)
     {   
         this.physics.pause();
