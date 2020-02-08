@@ -1,262 +1,134 @@
-var config = {
-    type: Phaser.AUTO,
-    width: 800,
-    height: 600,
-    physics: {
-        default: 'arcade',
-        arcade: {
-            //Sets the gravity of the whole game
-            gravity: { y: 500 },
-            debug: false
+let game;
+
+// global game options
+let gameOptions = {
+    platformStartSpeed: 350,
+    spawnRange: [100, 350],
+    platformSizeRange: [50, 250],
+    playerGravity: 900,
+    jumpForce: 400,
+    playerStartPosition: 200,
+    jumps: 2
+}
+
+window.onload = function() {
+
+    // object containing configuration options
+    let gameConfig = {
+        type: Phaser.AUTO,
+        width: 1334,
+        height: 750,
+        scene: playGame,
+        backgroundColor: 0x444444,
+
+        // physics settings
+        physics: {
+            default: "arcade"
         }
-    },
-    scene: {
-        preload: preload,
-        create: create,
-        update: update
-    },
-    backgroundColor: '#ffffff'
+    }
+    game = new Phaser.Game(gameConfig);
+
+}
+
+// playGame scene
+class playGame extends Phaser.Scene{
+    constructor(){
+        super("PlayGame");
+    }
+    preload(){
+        this.load.image("platform", "assets/platform.png");
+        this.load.image("player", "assets/player.png");
+    }
+    create(){
+
+        // group with all active platforms.
+        this.platformGroup = this.add.group({
+
+            // once a platform is removed, it's added to the pool
+            removeCallback: function(platform){
+                platform.scene.platformPool.add(platform)
+            }
+        });
+
+        // pool
+        this.platformPool = this.add.group({
+
+            // once a platform is removed from the pool, it's added to the active platforms group
+            removeCallback: function(platform){
+                platform.scene.platformGroup.add(platform)
+            }
+        });
+
+        // number of consecutive jumps made by the player
+        this.playerJumps = 0;
+
+        // adding a platform to the game, the arguments are platform width and x position
+        this.addPlatform(game.config.width, game.config.width / 2);
+
+        // adding the player;
+        this.player = this.physics.add.sprite(gameOptions.playerStartPosition, game.config.height / 2, "player");
+        this.player.setGravityY(gameOptions.playerGravity);
+
+        // setting collisions between the player and the platform group
+        this.physics.add.collider(this.player, this.platformGroup);
+
+        // checking for input
+        this.input.on("pointerdown", this.jump, this);
+    }
+
+    // the core of the script: platform are added from the pool or created on the fly
+    addPlatform(platformWidth, posX){
+        let platform;
+        if(this.platformPool.getLength()){
+            platform = this.platformPool.getFirst();
+            platform.x = posX;
+            platform.active = true;
+            platform.visible = true;
+            this.platformPool.remove(platform);
+        }
+        else{
+            platform = this.physics.add.sprite(posX, game.config.height * 0.8, "platform");
+            platform.setImmovable(true);
+            platform.setVelocityX(gameOptions.platformStartSpeed * -1);
+            this.platformGroup.add(platform);
+        }
+        platform.displayWidth = platformWidth;
+        this.nextPlatformDistance = Phaser.Math.Between(gameOptions.spawnRange[0], gameOptions.spawnRange[1]);
+    }
+
+    // the player jumps when on the ground, or once in the air as long as there are jumps left and the first jump was on the ground
+    jump(){
+        if(this.player.body.touching.down || (this.playerJumps > 0 && this.playerJumps < gameOptions.jumps)){
+            if(this.player.body.touching.down){
+                this.playerJumps = 0;
+            }
+            this.player.setVelocityY(gameOptions.jumpForce * -1);
+            this.playerJumps ++;
+        }
+    }
+    update(){
+
+        // game over
+        if(this.player.y > game.config.height){
+            this.scene.start("PlayGame");
+        }
+        this.player.x = gameOptions.playerStartPosition;
+
+        // recycling platforms
+        let minDistance = game.config.width;
+        this.platformGroup.getChildren().forEach(function(platform){
+            let platformDistance = game.config.width - platform.x - platform.displayWidth / 2;
+            minDistance = Math.min(minDistance, platformDistance);
+            if(platform.x < - platform.displayWidth / 2){
+                this.platformGroup.killAndHide(platform);
+                this.platformGroup.remove(platform);
+            }
+        }, this);
+
+        // adding new platforms
+        if(minDistance > this.nextPlatformDistance){
+            var nextPlatformWidth = Phaser.Math.Between(gameOptions.platformSizeRange[0], gameOptions.platformSizeRange[1]);
+            this.addPlatform(nextPlatformWidth, game.config.width + nextPlatformWidth / 2);
+        }
+    }
 };
-
-var game = new Phaser.Game(config);
-
-function preload ()
-{   //Loading assets, Sky, Ground, Star, Bomb and Dude (Sprite)
-    //this.load.image('sky', 'assets/sky.png');
-    this.load.image('ground', 'assets/platform.png');
-    this.load.image('powerups', 'assets/bouncealot.png');
-    this.load.image('spike', 'assets/tri.png');
-    this.load.image('star', 'assets/star.png');
-    this.load.image('bomb', 'assets/bomb.png');
-    this.load.spritesheet('player1', 
-        'assets/character.png',
-        { frameWidth: 30, frameHeight: 28 })
-    //this.load.image('player1', 'assets/character.png');
-}
-
-var platforms;
-var player;
-var gameOver = false;
-var timer;
-var time = 0
-var timeText
-var gametimeTimer
-var timedEvent
-var bombTimer
-var inputTimer
-
-function create ()
-{   
-    //  The score, fixed to camera
-    timeText = this.add.text(16, 16, 'Time: ' + time, { fontSize: '32px', fill: '#000' }).setScrollFactor(0);
-    timedEvent = this.time.addEvent({ delay: 1000, callback: onEvent, callbackScope: this, loop: true});
-    
-
-    this.physics.world.setBounds(0, -2000, 800, 9000)
-    //this.cameras.main.setViewport(0, 0, 800, 600);
-    //game.world.setBounds(0,0,480,380);
-    // setBounds(0, 0, 800, 2000)
-    // Phaser.Physics.Arcade.World.setBounds(0, 0, 800, 2000)
-    // game.world.setBounds(0, 0, 800, 2000);
-    //console.log(game.world)     
-    //Layers, the 'lowest' is the top layer
-    //Adds Sky as background
-    //this.add.image(400, 300, 'sky');
-    //Adds Star 
-    //this.add.image(400, 300, 'star');
-    var randomX = Phaser.Math.Between(20, 760)
-    //var randomY = Phaser.Math.Between(400, -2000)
-    //Adds a 'static' group in Physics called Platforms
-    platforms = this.physics.add.staticGroup();
-    spikes = this.physics.add.staticGroup();
-    powerups = this.physics.add.group({
-        key: 'powerups',
-        repeat: 10,
-        setXY: { x: 10, y: -2000, stepX: 80 }
-    });
-    powerups.children.iterate(function (child) {
-
-        //  Give each star a slightly different bounce
-        child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
-
-    });
-    //Creates the ground and scales it x2
-    platforms.create(0, 568, 'ground').setScale(6).refreshBody();
-
-    //Creates the other ground platforms X , Y, string
-    //1st
-    platforms.create(400, 400, 'ground').setScale(0.3).refreshBody();
-    //2nd
-    platforms.create(550, 270, 'ground').setScale(0.4).refreshBody();
-    //3rd
-    platforms.create(350, 120, 'ground').setScale(0.3).refreshBody();
-    //4th
-    platforms.create(250, -50, 'ground').setScale(0.4).refreshBody();
-    //5th
-    platforms.create(550, -150, 'ground').setScale(0.3).refreshBody();
-    //6th
-    platforms.create(150, -300, 'ground').setScale(0.5).refreshBody();
-    //7th
-    platforms.create(450, -470, 'ground').setScale(0.3).refreshBody();
-    //8th
-    platforms.create(750, -570, 'ground').setScale(0.3).refreshBody();
-    //9th
-    platforms.create(450, -720, 'ground').setScale(0.3).refreshBody();
-    //10th
-    platforms.create(750, -820, 'ground').setScale(0.3).refreshBody();
-    //11th
-    platforms.create(430, -980, 'ground').setScale(0.1).refreshBody();
-    //12th
-    platforms.create(180, -1090, 'ground').setScale(0.1).refreshBody();
-    //13th
-    platforms.create(560, -1240, 'ground').setScale(1).refreshBody();
-    //14th
-    platforms.create(200, -1340, 'ground').setScale(0.3).refreshBody();
-    //15th
-    platforms.create(450, -1520, 'ground').setScale(0.3).refreshBody();
-
-    powerups.create(250, 390, 'powerups')
-
-    //Spikes
-    spikes.create(400, 390, 'spike')
-    //Adds main player to physics group as a sprite
-    //player = this.physics.add.sprite(100, 450, 'dude');
-    //player = this.physics.add.sprite(100, 450, 'dude');
-    player = this.physics.add.sprite(180.6, -1105.6, 'player1');
-    
-    //Sets the bounce for the player 
-    player.setBounce(0.4);
-
-    //Stops the player being able to leave the screen
-    player.setCollideWorldBounds(true);
-
-    /*****************
-     * THE BELOW IS COMMENTED OUT AS WE ARE NOT USING SPRITE CURRENTLY
-    //If left key is pressed, use the sprite 0 - 3 for left running, at 10 frames a second, as a loop
-    // this.anims.create({
-    //     key: 'left',
-    //     frames: this.anims.generateFrameNumbers('dude', { start: 0, end: 3 }),
-    //     frameRate: 10,
-    //     repeat: -1
-    // });
-
-    // //If no key is pressed, use the sprite 4 for standing still, at 20 frames a second
-    // this.anims.create({
-    //     key: 'turn',
-    //     frames: [ { key: 'dude', frame: 4 } ],
-    //     frameRate: 20
-    // });
-
-    // //If right key is pressed, use the sprite 5 - 8 for right running, at 10 frames a second, as a loop
-    // this.anims.create({
-    //     key: 'right',
-    //     frames: this.anims.generateFrameNumbers('dude', { start: 5, end: 8 }),
-    //     frameRate: 10,
-    //     repeat: -1
-    // });
-
-    *********************/
-
-    //This stops the player from falling 'through' the ground (platforms)
-    this.physics.add.collider(player, platforms);
-    this.physics.add.collider(player, spikes, setGameOver, null, this)
-    this.physics.add.collider(powerups, platforms)
-    this.physics.add.overlap(player, powerups, collectPowerUp, null, this);
-    //This enabled keyboard input to control the player
-    cursors = this.input.keyboard.createCursorKeys();
-    
-
-    // make the camera follow the player
-    this.cameras.main.startFollow(player);
-    
-    this.cameras.main.followOffset.set(0, 200);
-    
-    
-    
-    
-    //add bombs to physics group
-    //add coliders for bombs and platforms so they bounce off the platforms
-    //adds collider for player and bomb, when they collide call the function 'hitBomb'  
-     bombs = this.physics.add.group();
-     this.physics.add.collider(bombs, platforms);
-     this.physics.add.collider(player, bombs, setGameOver, null, this);
-
-     /*
-     creates a variable that holds a set interval for every 2 seconds, that will check if the player is between -1200 and -1500
-     if they are between -1200 and -1500
-     Bombs will be created every 2 seconds and set the timerActive variable to True
-     else 
-     will mark the timer active to false and clear interval
-     */
-     bombTimer = this.time.addEvent({ delay: 500, callback: createBomb, callbackScope: this, loop: true});
-
-    
-}
-function createBomb() {
-    if (player.y < -1200 && player.y > -1500) {
-        var x = Phaser.Math.Between(0, 800)
-        var bomb = bombs.create(x, -1600, 'bomb');
-        bomb.setBounce(1);
-        bomb.setCollideWorldBounds(true);
-        bomb.setVelocity(Phaser.Math.Between(-200, 200), 20);
-        return
-     } else {
-        return;
-     }
-}
-function collectPowerUp(player, powerup) {
-    powerup.disableBody(true, true);
-    player.setBounce(1)
-    bouncePowerup = this.time.addEvent({ delay: 10000, callback: bouncePowerupTimer, callbackScope: this, loop: true});
-    function bouncePowerupTimer() {
-        player.setBounce(0.5)
-    }
-}
- 
-function setGameOver() {
-    gameOver = true;
-}
-
-function onEvent() {
-    time += 1;
-}
-
-function update()
-{   
-    
-    timeText.setText('Time: ' + time)
-    if (gameOver)
-    {   
-        this.physics.pause();
-        timedEvent.paused = true
-        bombTimer.paused = true
-        return;
-    }
-
-    //If the left key is pressed, set velocityX -160 and play the animation 'left'
-    if (cursors.left.isDown)
-{
-    player.setVelocityX(-160);
-
-    //player.anims.play('left', true);
-}
-//If the right key is pressed, set velocityX 160 and play the animation 'right'
-else if (cursors.right.isDown)
-{
-    player.setVelocityX(160);
-
-    //player.anims.play('right', true);
-}
-else
-{
-    //If no key is pressed, set velocity to 0 and play the animation 'turn' for standing still
-    player.setVelocityX(0);
-
-    //player.anims.play('turn');
-}
-//If the up arrow is pressed and the body is touching the platforms, set velocityY to -330 to jump
-if (cursors.up.isDown && player.body.touching.down)
-{
-    player.setVelocityY(-470);
-}
-}
